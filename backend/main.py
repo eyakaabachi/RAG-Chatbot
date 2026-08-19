@@ -32,9 +32,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Document Chatbot Prototype")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(
-    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 index = DocumentIndex()
 
@@ -102,8 +100,9 @@ async def upload(request: Request, file: UploadFile = File(...)):
     content = (await file.read()).decode("utf-8", errors="ignore")
     doc_id = Path(file.filename).stem
     index.add_document(doc_id, content)
-    logger.info('{"event": "upload", "doc_id": "%s", "chunks_total": %d}'
-                % (doc_id, len(index.chunks)))
+    logger.info(
+        '{"event": "upload", "doc_id": "%s", "chunks_total": %d}' % (doc_id, len(index.chunks))
+    )
     return {"doc_id": doc_id, "chunks_added": len(index.chunks)}
 
 
@@ -115,12 +114,14 @@ def health():
 @app.get("/api/metrics")
 def get_metrics():
     total = metrics["requests_total"]
-    return JSONResponse({
-        "requests_total": total,
-        "errors_total": metrics["errors_total"],
-        "answer_found_rate": round(metrics["answer_found_total"] / total, 3) if total else None,
-        "avg_latency_ms": round(metrics["latency_ms_sum"] / total, 1) if total else None,
-    })
+    return JSONResponse(
+        {
+            "requests_total": total,
+            "errors_total": metrics["errors_total"],
+            "answer_found_rate": round(metrics["answer_found_total"] / total, 3) if total else None,
+            "avg_latency_ms": round(metrics["latency_ms_sum"] / total, 1) if total else None,
+        }
+    )
 
 
 # Serve the chat frontend as static files, single-service deploy

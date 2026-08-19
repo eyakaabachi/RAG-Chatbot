@@ -5,6 +5,7 @@ Follows the 'seven patterns' article: the LLM never returns a free-text
 string. It fills a schema with citations and self-assessment fields,
 and the answer is validated before it reaches the user.
 """
+
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -21,7 +22,9 @@ class AnswerContract(BaseModel):
     answer_found: bool
     complete_answer_found: bool
 
-    value: Optional[str] = Field(None, description="The answer itself, typed as text for this prototype")
+    value: Optional[str] = Field(
+        None, description="The answer itself, typed as text for this prototype"
+    )
     citations: List[Citation] = Field(default_factory=list)
 
     confidence: float = Field(0.0, ge=0.0, le=1.0)

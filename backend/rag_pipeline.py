@@ -14,6 +14,7 @@ Design choices, on purpose, tied to the conversation with Kezhan:
    cosine similarity, rebuilt on startup, is enough for a demo corpus
    of a few documents.
 """
+
 from __future__ import annotations
 
 import os
@@ -58,11 +59,48 @@ KEYWORD_DICTIONARIES = {
     },
 }
 
-FR_STOPWORDS = {"le", "la", "les", "de", "des", "du", "un", "une", "et", "est",
-                "que", "qui", "dans", "pour", "sur", "vous", "quel", "quelle",
-                "quels", "quelles", "comment", "quand"}
-EN_STOPWORDS = {"the", "a", "an", "of", "is", "are", "and", "what", "how",
-                "when", "for", "on", "in", "does", "do", "which"}
+FR_STOPWORDS = {
+    "le",
+    "la",
+    "les",
+    "de",
+    "des",
+    "du",
+    "un",
+    "une",
+    "et",
+    "est",
+    "que",
+    "qui",
+    "dans",
+    "pour",
+    "sur",
+    "vous",
+    "quel",
+    "quelle",
+    "quels",
+    "quelles",
+    "comment",
+    "quand",
+}
+EN_STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "of",
+    "is",
+    "are",
+    "and",
+    "what",
+    "how",
+    "when",
+    "for",
+    "on",
+    "in",
+    "does",
+    "do",
+    "which",
+}
 
 
 def detect_language(text: str) -> str:
@@ -105,22 +143,25 @@ def parse_and_chunk(doc_id: str, raw_text: str) -> List[Chunk]:
             continue
         # hard-wrap so a chunk never exceeds CHUNK_MAX_CHARS
         for i in range(0, len(body), CHUNK_MAX_CHARS):
-            piece = body[i:i + CHUNK_MAX_CHARS].strip()
+            piece = body[i : i + CHUNK_MAX_CHARS].strip()
             if not piece:
                 continue
-            chunks.append(Chunk(
-                doc_id=doc_id,
-                chunk_id=str(uuid.uuid4())[:8],
-                text=piece,
-                section=heading,
-                language=detect_language(piece),
-            ))
+            chunks.append(
+                Chunk(
+                    doc_id=doc_id,
+                    chunk_id=str(uuid.uuid4())[:8],
+                    text=piece,
+                    section=heading,
+                    language=detect_language(piece),
+                )
+            )
     return chunks
 
 
 # ---------------------------------------------------------------------------
 # Index
 # ---------------------------------------------------------------------------
+
 
 class DocumentIndex:
     def __init__(self):
@@ -162,17 +203,17 @@ class DocumentIndex:
 
             # Weighting mirrors the multilingual answer: structure and
             # embeddings dominate, keyword is a bonus on top.
-            final = (0.55 * float(emb_score)
-                     + 0.20 * structure_score
-                     + 0.25 * keyword_score)
+            final = 0.55 * float(emb_score) + 0.20 * structure_score + 0.25 * keyword_score
 
-            results.append(RetrievedChunk(
-                chunk=chunk,
-                embedding_score=float(emb_score),
-                keyword_score=keyword_score,
-                structure_score=structure_score,
-                final_score=final,
-            ))
+            results.append(
+                RetrievedChunk(
+                    chunk=chunk,
+                    embedding_score=float(emb_score),
+                    keyword_score=keyword_score,
+                    structure_score=structure_score,
+                    final_score=final,
+                )
+            )
 
         results.sort(key=lambda r: r.final_score, reverse=True)
         return results[:top_k]
@@ -208,6 +249,7 @@ class DocumentIndex:
 # ---------------------------------------------------------------------------
 # Generation (typed contract)
 # ---------------------------------------------------------------------------
+
 
 def build_prompt(query: str, retrieved: List[RetrievedChunk]) -> str:
     context_blocks = []
