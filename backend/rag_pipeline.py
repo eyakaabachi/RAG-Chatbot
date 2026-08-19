@@ -14,20 +14,18 @@ Design choices, on purpose, tied to the conversation with Kezhan:
    cosine similarity, rebuilt on startup, is enough for a demo corpus
    of a few documents.
 """
-
 from __future__ import annotations
 
+import json
 import os
 import re
-import json
 import uuid
 from pathlib import Path
-from typing import List, Optional
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from schemas import Chunk, RetrievedChunk, AnswerContract, Citation
+from schemas import AnswerContract, Chunk, RetrievedChunk
 
 # ---------------------------------------------------------------------------
 # Config
@@ -59,48 +57,11 @@ KEYWORD_DICTIONARIES = {
     },
 }
 
-FR_STOPWORDS = {
-    "le",
-    "la",
-    "les",
-    "de",
-    "des",
-    "du",
-    "un",
-    "une",
-    "et",
-    "est",
-    "que",
-    "qui",
-    "dans",
-    "pour",
-    "sur",
-    "vous",
-    "quel",
-    "quelle",
-    "quels",
-    "quelles",
-    "comment",
-    "quand",
-}
-EN_STOPWORDS = {
-    "the",
-    "a",
-    "an",
-    "of",
-    "is",
-    "are",
-    "and",
-    "what",
-    "how",
-    "when",
-    "for",
-    "on",
-    "in",
-    "does",
-    "do",
-    "which",
-}
+FR_STOPWORDS = {"le", "la", "les", "de", "des", "du", "un", "une", "et", "est",
+                "que", "qui", "dans", "pour", "sur", "vous", "quel", "quelle",
+                "quels", "quelles", "comment", "quand"}
+EN_STOPWORDS = {"the", "a", "an", "of", "is", "are", "and", "what", "how",
+                "when", "for", "on", "in", "does", "do", "which"}
 
 
 def detect_language(text: str) -> str:
@@ -119,11 +80,11 @@ def detect_language(text: str) -> str:
 HEADING_RE = re.compile(r"^(Article\s+\d+|ARTICLE\s+\d+|Section\s+\d+|[A-Z][A-Z \-]{6,})\s*$")
 
 
-def parse_and_chunk(doc_id: str, raw_text: str) -> List[Chunk]:
+def parse_and_chunk(doc_id: str, raw_text: str) -> list[Chunk]:
     """Section-aware chunking: split on headings first (structure signal),
     then hard-wrap long sections so no chunk blows the context budget."""
     lines = raw_text.splitlines()
-    sections: List[tuple[Optional[str], List[str]]] = []
+    sections: list[tuple[str | None, list[str]]] = []
     current_heading, buf = None, []
 
     for line in lines:
@@ -136,25 +97,23 @@ def parse_and_chunk(doc_id: str, raw_text: str) -> List[Chunk]:
     if buf:
         sections.append((current_heading, buf))
 
-    chunks: List[Chunk] = []
+    chunks: list[Chunk] = []
     for heading, body_lines in sections:
         body = "\n".join(body_lines).strip()
         if not body:
             continue
         # hard-wrap so a chunk never exceeds CHUNK_MAX_CHARS
         for i in range(0, len(body), CHUNK_MAX_CHARS):
-            piece = body[i : i + CHUNK_MAX_CHARS].strip()
+            piece = body[i:i + CHUNK_MAX_CHARS].strip()
             if not piece:
                 continue
-            chunks.append(
-                Chunk(
-                    doc_id=doc_id,
-                    chunk_id=str(uuid.uuid4())[:8],
-                    text=piece,
-                    section=heading,
-                    language=detect_language(piece),
-                )
-            )
+            chunks.append(Chunk(
+                doc_id=doc_id,
+                chunk_id=str(uuid.uuid4())[:8],
+                text=piece,
+                section=heading,
+                language=detect_language(piece),
+            ))
     return chunks
 
 
@@ -162,12 +121,11 @@ def parse_and_chunk(doc_id: str, raw_text: str) -> List[Chunk]:
 # Index
 # ---------------------------------------------------------------------------
 
-
 class DocumentIndex:
     def __init__(self):
         self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-        self.chunks: List[Chunk] = []
-        self.embeddings: Optional[np.ndarray] = None
+        self.chunks: list[Chunk] = []
+        self.embeddings: np.ndarray | None = None
 
     def add_document(self, doc_id: str, raw_text: str):
         new_chunks = parse_and_chunk(doc_id, raw_text)
@@ -188,7 +146,7 @@ class DocumentIndex:
             self.add_document(path.stem, path.read_text(encoding="utf-8"))
 
     # -- hybrid retrieval ---------------------------------------------------
-    def search(self, query: str, top_k: int = TOP_K) -> List[RetrievedChunk]:
+    def search(self, query: str, top_k: int = TOP_K) -> list[RetrievedChunk]:
         if self.embeddings is None or len(self.chunks) == 0:
             return []
 
@@ -196,24 +154,24 @@ class DocumentIndex:
         query_emb = self.model.encode([query], normalize_embeddings=True)[0]
         cosine_scores = self.embeddings @ query_emb  # (n_chunks,)
 
-        results: List[RetrievedChunk] = []
-        for chunk, emb_score in zip(self.chunks, cosine_scores):
+        results: list[RetrievedChunk] = []
+        for chunk, emb_score in zip(self.chunks, cosine_scores, strict=True):
             keyword_score = self._keyword_score(query, chunk, query_lang)
             structure_score = self._structure_score(query, chunk)
 
             # Weighting mirrors the multilingual answer: structure and
             # embeddings dominate, keyword is a bonus on top.
-            final = 0.55 * float(emb_score) + 0.20 * structure_score + 0.25 * keyword_score
+            final = (0.55 * float(emb_score)
+                     + 0.20 * structure_score
+                     + 0.25 * keyword_score)
 
-            results.append(
-                RetrievedChunk(
-                    chunk=chunk,
-                    embedding_score=float(emb_score),
-                    keyword_score=keyword_score,
-                    structure_score=structure_score,
-                    final_score=final,
-                )
-            )
+            results.append(RetrievedChunk(
+                chunk=chunk,
+                embedding_score=float(emb_score),
+                keyword_score=keyword_score,
+                structure_score=structure_score,
+                final_score=final,
+            ))
 
         results.sort(key=lambda r: r.final_score, reverse=True)
         return results[:top_k]
@@ -250,8 +208,7 @@ class DocumentIndex:
 # Generation (typed contract)
 # ---------------------------------------------------------------------------
 
-
-def build_prompt(query: str, retrieved: List[RetrievedChunk]) -> str:
+def build_prompt(query: str, retrieved: list[RetrievedChunk]) -> str:
     context_blocks = []
     for r in retrieved:
         c = r.chunk
@@ -327,7 +284,7 @@ def call_llm(prompt: str) -> str:
     return data["choices"][0]["message"]["content"]
 
 
-def generate_answer(query: str, retrieved: List[RetrievedChunk]) -> AnswerContract:
+def generate_answer(query: str, retrieved: list[RetrievedChunk]) -> AnswerContract:
     if not retrieved:
         return AnswerContract(
             answer_found=False,

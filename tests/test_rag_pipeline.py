@@ -6,22 +6,21 @@ all things we can verify deterministically. The full DocumentIndex
 (which loads sentence-transformers) is exercised manually / in a slower
 integration test, not on every push.
 """
-
 import sys
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from rag_pipeline import parse_and_chunk, detect_language, DocumentIndex  # noqa: E402
+from rag_pipeline import DocumentIndex, detect_language, parse_and_chunk  # noqa: E402
 from schemas import AnswerContract, Chunk, Citation  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
-
 
 def test_detect_language_french():
     assert detect_language("Quel est le délai de déclaration d'un sinistre ?") == "fr"
@@ -35,9 +34,13 @@ def test_detect_language_english():
 # Chunking
 # ---------------------------------------------------------------------------
 
-
 def test_parse_and_chunk_splits_on_headings():
-    text = "Article 1\nFirst section body text.\nArticle 2\nSecond section body text.\n"
+    text = (
+        "Article 1\n"
+        "First section body text.\n"
+        "Article 2\n"
+        "Second section body text.\n"
+    )
     chunks = parse_and_chunk("doc1", text)
     assert len(chunks) == 2
     assert chunks[0].section == "Article 1"
@@ -64,34 +67,18 @@ def test_parse_and_chunk_assigns_language_per_chunk():
 # Hybrid scoring (keyword + structure), no embedding model needed
 # ---------------------------------------------------------------------------
 
-
 def test_keyword_score_same_language_hit():
-    chunk = Chunk(
-        doc_id="d",
-        chunk_id="c1",
-        text="La franchise est de 250 euros.",
-        section="Article 2",
-        language="fr",
-    )
+    chunk = Chunk(doc_id="d", chunk_id="c1", text="La franchise est de 250 euros.",
+                  section="Article 2", language="fr")
     score = DocumentIndex._keyword_score("quelle est la franchise ?", chunk, "fr")
     assert score > 0.0
 
 
 def test_keyword_score_cross_language_is_discounted():
-    fr_chunk = Chunk(
-        doc_id="d",
-        chunk_id="c1",
-        text="La franchise est de 250 euros.",
-        section="Article 2",
-        language="fr",
-    )
-    en_chunk = Chunk(
-        doc_id="d",
-        chunk_id="c2",
-        text="The deductible is 300 dollars.",
-        section="Section 2",
-        language="en",
-    )
+    fr_chunk = Chunk(doc_id="d", chunk_id="c1", text="La franchise est de 250 euros.",
+                      section="Article 2", language="fr")
+    en_chunk = Chunk(doc_id="d", chunk_id="c2", text="The deductible is 300 dollars.",
+                      section="Section 2", language="en")
 
     same_lang_score = DocumentIndex._keyword_score("what is the deductible?", en_chunk, "en")
     cross_lang_score = DocumentIndex._keyword_score("what is the deductible?", fr_chunk, "en")
@@ -100,25 +87,15 @@ def test_keyword_score_cross_language_is_discounted():
 
 
 def test_keyword_score_no_match_returns_zero():
-    chunk = Chunk(
-        doc_id="d",
-        chunk_id="c1",
-        text="Coverage applies to fire damage.",
-        section="Section 4",
-        language="en",
-    )
+    chunk = Chunk(doc_id="d", chunk_id="c1", text="Coverage applies to fire damage.",
+                  section="Section 4", language="en")
     score = DocumentIndex._keyword_score("what is the weather today?", chunk, "en")
     assert score == 0.0
 
 
 def test_structure_score_rewards_heading_overlap():
-    chunk = Chunk(
-        doc_id="d",
-        chunk_id="c1",
-        text="irrelevant body",
-        section="Article 5 Resiliation",
-        language="fr",
-    )
+    chunk = Chunk(doc_id="d", chunk_id="c1", text="irrelevant body",
+                  section="Article 5 Resiliation", language="fr")
     high = DocumentIndex._structure_score("comment fonctionne la resiliation ?", chunk)
     low = DocumentIndex._structure_score("quelle est la franchise ?", chunk)
     assert high > low
@@ -133,7 +110,6 @@ def test_structure_score_zero_without_section():
 # Typed contract
 # ---------------------------------------------------------------------------
 
-
 def test_answer_contract_requires_two_booleans():
     contract = AnswerContract(answer_found=True, complete_answer_found=False, confidence=0.6)
     assert contract.answer_found is True
@@ -141,10 +117,10 @@ def test_answer_contract_requires_two_booleans():
 
 
 def test_answer_contract_rejects_confidence_out_of_range():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         AnswerContract(answer_found=True, complete_answer_found=True, confidence=1.5)
 
 
 def test_citation_requires_quote():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Citation(doc_id="d", chunk_id="c1")  # missing required `quote`

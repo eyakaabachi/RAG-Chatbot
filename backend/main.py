@@ -1,15 +1,16 @@
+import json
 import logging
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, Request, UploadFile, File
+from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from rag_pipeline import DocumentIndex, generate_answer
 from schemas import AnswerContract
@@ -24,6 +25,11 @@ from schemas import AnswerContract
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("doc-chatbot")
 
+
+def log_event(event: str, **fields) -> None:
+    logger.info(json.dumps({"event": event, **fields}))
+
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 SAMPLE_DOCS_DIR = BASE_DIR / "data" / "sample_docs"
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -32,7 +38,9 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="Document Chatbot Prototype")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 index = DocumentIndex()
 
@@ -51,7 +59,7 @@ metrics = {
 def load_sample_corpus():
     if SAMPLE_DOCS_DIR.exists():
         index.load_folder(str(SAMPLE_DOCS_DIR))
-    logger.info('{"event": "startup", "chunks_indexed": %d}' % len(index.chunks))
+    log_event("startup", chunks_indexed=len(index.chunks))
 
 
 class AskRequest(BaseModel):
@@ -69,7 +77,7 @@ def ask(request: Request, req: AskRequest):
         answer = generate_answer(req.question, retrieved)
     except Exception:
         metrics["errors_total"] += 1
-        logger.exception('{"event": "ask_failed"}')
+        logger.exception(json.dumps({"event": "ask_failed"}))
         raise
 
     elapsed_ms = (time.perf_counter() - start) * 1000
@@ -77,19 +85,15 @@ def ask(request: Request, req: AskRequest):
     if answer.answer_found:
         metrics["answer_found_total"] += 1
 
-    logger.info(
-        '{"event": "ask", "question_len": %d, "language": "%s", '
-        '"answer_found": %s, "complete": %s, "confidence": %.2f, '
-        '"top_score": %.3f, "latency_ms": %.1f}'
-        % (
-            len(req.question),
-            answer.language_detected or "unknown",
-            str(answer.answer_found).lower(),
-            str(answer.complete_answer_found).lower(),
-            answer.confidence,
-            retrieved[0].final_score if retrieved else 0.0,
-            elapsed_ms,
-        )
+    log_event(
+        "ask",
+        question_len=len(req.question),
+        language=answer.language_detected or "unknown",
+        answer_found=answer.answer_found,
+        complete=answer.complete_answer_found,
+        confidence=round(answer.confidence, 2),
+        top_score=round(retrieved[0].final_score, 3) if retrieved else 0.0,
+        latency_ms=round(elapsed_ms, 1),
     )
     return answer
 
@@ -100,9 +104,7 @@ async def upload(request: Request, file: UploadFile = File(...)):
     content = (await file.read()).decode("utf-8", errors="ignore")
     doc_id = Path(file.filename).stem
     index.add_document(doc_id, content)
-    logger.info(
-        '{"event": "upload", "doc_id": "%s", "chunks_total": %d}' % (doc_id, len(index.chunks))
-    )
+    log_event("upload", doc_id=doc_id, chunks_total=len(index.chunks))
     return {"doc_id": doc_id, "chunks_added": len(index.chunks)}
 
 
@@ -114,14 +116,12 @@ def health():
 @app.get("/api/metrics")
 def get_metrics():
     total = metrics["requests_total"]
-    return JSONResponse(
-        {
-            "requests_total": total,
-            "errors_total": metrics["errors_total"],
-            "answer_found_rate": round(metrics["answer_found_total"] / total, 3) if total else None,
-            "avg_latency_ms": round(metrics["latency_ms_sum"] / total, 1) if total else None,
-        }
-    )
+    return JSONResponse({
+        "requests_total": total,
+        "errors_total": metrics["errors_total"],
+        "answer_found_rate": round(metrics["answer_found_total"] / total, 3) if total else None,
+        "avg_latency_ms": round(metrics["latency_ms_sum"] / total, 1) if total else None,
+    })
 
 
 # Serve the chat frontend as static files, single-service deploy

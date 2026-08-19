@@ -5,7 +5,10 @@ src = ["backend", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-ignore = ["E501"]  # long lines in prompts/docstrings are fine
+ignore = [
+    "E501",  # long lines in prompts/docstrings are fine
+    "B008",  # FastAPI's File(...)/Depends(...) as a default arg is the idiomatic pattern
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
