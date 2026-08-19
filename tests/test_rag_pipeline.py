@@ -17,7 +17,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 from rag_pipeline import DocumentIndex, detect_language, parse_and_chunk  # noqa: E402
 from schemas import AnswerContract, Chunk, Citation  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # Language detection
 # ---------------------------------------------------------------------------
