@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Document Assistant — Prototype</title>
+<style>
+  :root {
+    --ink: #1c2321;
+    --paper: #eef0ec;
+    --card: #ffffff;
+    --line: #cbd2c8;
+    --accent: #2f5d50;
+    --accent-soft: #d9e6df;
+    --warn: #8a5a2a;
+    --mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: 'IBM Plex Sans', Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    display: flex;
+    justify-content: center;
+    min-height: 100vh;
+  }
+  .app {
+    width: 100%;
+    max-width: 760px;
+    padding: 32px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  header {
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  h1 {
+    font-size: 22px;
+    margin: 6px 0 4px;
+    font-weight: 600;
+  }
+  .sub {
+    font-size: 13px;
+    color: #5b655f;
+  }
+  .lang-tags {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .lang-tags span {
+    font-family: var(--mono);
+    font-size: 11px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 2px 8px;
+    color: #5b655f;
+  }
+  #thread {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 8px 0 20px;
+  }
+  .msg {
+    max-width: 88%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    font-size: 14.5px;
+    line-height: 1.5;
+  }
+  .msg.user {
+    align-self: flex-end;
+    background: var(--accent);
+    color: white;
+  }
+  .msg.bot {
+    align-self: flex-start;
+    background: var(--card);
+    border: 1px solid var(--line);
+  }
+  .msg.bot .status {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+  }
+  .status.found { background: var(--accent-soft); color: var(--accent); }
+  .status.partial { background: #f3e6cf; color: var(--warn); }
+  .status.notfound { background: #f0d9d9; color: #8a2a2a; }
+  .citations {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+  }
+  .citation {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: #5b655f;
+    margin-top: 6px;
+  }
+  .citation b { color: var(--ink); }
+  .caveat {
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: var(--warn);
+    font-style: italic;
+  }
+  form {
+    display: flex;
+    gap: 8px;
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+  }
+  input[type="text"] {
+    flex: 1;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: var(--sans);
+    background: var(--card);
+  }
+  input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    padding: 12px 18px;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: white;
+    font-family: var(--sans);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: #8a938e;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="eyebrow">Doc Intel — Prototype</div>
+      <h1>Ask the policy documents</h1>
+      <div class="sub">Answers are grounded in retrieved passages only. Every answer carries citations and a confidence flag, never a bare string.</div>
+      <div class="lang-tags"><span>FR corpus loaded</span><span>EN corpus loaded</span><span>hybrid retrieval</span></div>
+    </header>
+
+    <div id="thread"></div>
+
+    <form id="ask-form">
+      <input id="question" type="text" placeholder="Quel est le delai de declaration d'un sinistre ? / What's the claim reporting deadline?" autocomplete="off" />
+      <button id="send" type="submit">Ask</button>
+    </form>
+    <div class="hint">Try the same question in French and English — the retrieval pipeline is designed to find the same answer either way.</div>
+  </div>
+
+<script>
+const thread = document.getElementById('thread');
+const form = document.getElementById('ask-form');
+const input = document.getElementById('question');
+const sendBtn = document.getElementById('send');
+
+function addMessage(role, html) {
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  div.innerHTML = html;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+
+function statusLabel(answer) {
+  if (!answer.answer_found) return ['notfound', 'Not found in corpus'];
+  if (!answer.complete_answer_found) return ['partial', 'Partial answer'];
+  return ['found', 'Answer found'];
+}
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const question = input.value.trim();
+  if (!question) return;
+
+  addMessage('user', question);
+  input.value = '';
+  sendBtn.disabled = true;
+  addMessage('bot', '<span class="status">…</span> thinking');
+
+  try {
+    const res = await fetch('/api/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question })
+    });
+    const data = await res.json();
+    thread.lastChild.remove();
+
+    const [cls, label] = statusLabel(data);
+    let html = `<span class="status ${cls}">${label} · confidence ${Math.round((data.confidence||0)*100)}%</span>`;
+    html += `<div>${data.value ? data.value : 'No grounded answer available.'}</div>`;
+
+    if (data.citations && data.citations.length) {
+      html += '<div class="citations">';
+      data.citations.forEach(c => {
+        html += `<div class="citation"><b>${c.doc_id}</b> · ${c.section || 'n/a'} — "${c.quote}"</div>`;
+      });
+      html += '</div>';
+    }
+    if (data.caveat) {
+      html += `<div class="caveat">${data.caveat}</div>`;
+    }
+    addMessage('bot', html);
+  } catch (err) {
+    thread.lastChild.remove();
+    addMessage('bot', '<span class="status notfound">Error</span><div>Could not reach the backend.</div>');
+  } finally {
+    sendBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

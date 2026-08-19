@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: doc-chatbot
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false  # set manually in the Render dashboard, never committed
+    healthCheckPath: /api/health
+    autoDeploy: true
