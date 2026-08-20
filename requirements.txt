@@ -6,3 +6,4 @@ pydantic>=2.9.2
 requests>=2.32.3
 python-multipart>=0.0.9
 slowapi>=0.1.9
+huggingface_hub>=0.36.0

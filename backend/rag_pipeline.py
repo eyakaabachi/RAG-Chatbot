@@ -23,7 +23,7 @@ import uuid
 from pathlib import Path
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import InferenceClient
 
 from schemas import AnswerContract, Chunk, RetrievedChunk
 
@@ -31,7 +31,8 @@ from schemas import AnswerContract, Chunk, RetrievedChunk
 # Config
 # ---------------------------------------------------------------------------
 
-EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"  # FR/EN/DE/LU-adjacent
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+HF_PROVIDER = "hf-inference"
 CHUNK_MAX_CHARS = 700
 TOP_K = 4
 
@@ -123,9 +124,47 @@ def parse_and_chunk(doc_id: str, raw_text: str) -> list[Chunk]:
 
 class DocumentIndex:
     def __init__(self):
-        self.model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token:
+            raise RuntimeError(
+                "HF_TOKEN not set. Create a Hugging Face token with "
+                "Inference Providers permission and set it as an environment variable."
+            )
+
+        self.embedding_client = InferenceClient(
+            provider=HF_PROVIDER,
+            api_key=hf_token,
+        )
         self.chunks: list[Chunk] = []
         self.embeddings: np.ndarray | None = None
+
+    def _embed(self, texts: list[str], *, is_query: bool = False) -> np.ndarray:
+        if not texts:
+            return np.empty((0, 384), dtype=np.float32)
+
+        # E5 models are trained with task prefixes for asymmetric retrieval.
+        prefix = "query: " if is_query else "passage: "
+        inputs = [prefix + text for text in texts]
+
+        result = self.embedding_client.feature_extraction(
+            inputs,
+            model=EMBEDDING_MODEL_NAME,
+        )
+        embeddings = np.asarray(result, dtype=np.float32)
+
+        # Some inference backends return token-level embeddings. Mean-pool
+        # those outputs before normalization; sentence-level outputs pass through.
+        if embeddings.ndim == 3:
+            embeddings = embeddings.mean(axis=1)
+
+        if embeddings.ndim != 2:
+            raise RuntimeError(
+                f"Unexpected embedding shape from Hugging Face: {embeddings.shape}"
+            )
+
+        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+        embeddings = embeddings / np.clip(norms, 1e-12, None)
+        return embeddings
 
     def add_document(self, doc_id: str, raw_text: str):
         new_chunks = parse_and_chunk(doc_id, raw_text)
@@ -137,9 +176,7 @@ class DocumentIndex:
             self.embeddings = None
             return
         texts = [c.text for c in self.chunks]
-        self.embeddings = self.model.encode(
-            texts, normalize_embeddings=True, show_progress_bar=False
-        )
+        self.embeddings = self._embed(texts, is_query=False)
 
     def load_folder(self, folder: str):
         for path in Path(folder).glob("*.txt"):
@@ -151,7 +188,7 @@ class DocumentIndex:
             return []
 
         query_lang = detect_language(query)
-        query_emb = self.model.encode([query], normalize_embeddings=True)[0]
+        query_emb = self._embed([query], is_query=True)[0]
         cosine_scores = self.embeddings @ query_emb  # (n_chunks,)
 
         results: list[RetrievedChunk] = []
