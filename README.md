@@ -1,6 +1,6 @@
 # Document Assistant — Prototype
 
-A small, deployable RAG chatbot built to answer Kezhan's brief: prove domain
+A small, deployable RAG chatbot built to answer: prove domain
 knowledge, prove I can ship something a business user could open in a
 browser, and fold in the multilingual retrieval question from our
 conversation instead of just arguing it in a message.

@@ -15,12 +15,7 @@ from slowapi.util import get_remote_address
 from rag_pipeline import DocumentIndex, generate_answer
 from schemas import AnswerContract
 
-# ---------------------------------------------------------------------------
-# Structured logging: JSON lines, one per request, so a real deployment
-# could ship these straight to a log aggregator without reformatting.
-# This is the same instinct as Pattern 2 in the extraction-errors article:
-# every step should be replayable, not just trusted.
-# ---------------------------------------------------------------------------
+
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("doc-chatbot")
@@ -44,9 +39,6 @@ app.add_middleware(
 
 index = DocumentIndex()
 
-# In-memory metrics. No external monitoring service, so this is deliberately
-# minimal: enough to show request volume, latency, and answer quality trends
-# without adding a paid dependency to a free-tier deployment.
 metrics = {
     "requests_total": 0,
     "answer_found_total": 0,
@@ -67,7 +59,7 @@ class AskRequest(BaseModel):
 
 
 @app.post("/api/ask", response_model=AnswerContract)
-@limiter.limit("10/minute")  # protects the free Groq/embedding quota from abuse
+@limiter.limit("10/minute") 
 def ask(request: Request, req: AskRequest):
     start = time.perf_counter()
     metrics["requests_total"] += 1
@@ -124,7 +116,6 @@ def get_metrics():
     })
 
 
-# Serve the chat frontend as static files, single-service deploy
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
 

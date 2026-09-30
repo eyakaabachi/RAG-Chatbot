@@ -1,10 +1,3 @@
-"""
-Typed contracts for the RAG pipeline.
-
-Follows the 'seven patterns' article: the LLM never returns a free-text
-string. It fills a schema with citations and self-assessment fields,
-and the answer is validated before it reaches the user.
-"""
 from pydantic import BaseModel, Field
 
 
@@ -16,7 +9,7 @@ class Citation(BaseModel):
 
 
 class AnswerContract(BaseModel):
-    # Pattern 4: two booleans, not one confidence float
+    
     answer_found: bool
     complete_answer_found: bool
 

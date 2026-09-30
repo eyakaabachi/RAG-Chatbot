@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        /* ── reset & base ── */
+        
         *,
         *::before,
         *::after {
@@ -18,7 +18,7 @@
         }
 
         :root {
-            /* new aesthetic palette */
+            
             --bg: #f6f9fc;
             --surface: #ffffff;
             --surface-hover: #f1f5f9;
@@ -65,7 +65,7 @@
                 radial-gradient(ellipse at 70% 80%, rgba(124, 58, 237, 0.04) 0%, transparent 60%);
         }
 
-        /* ── app container ── */
+        
         .app {
             width: 100%;
             max-width: 820px;
@@ -83,7 +83,7 @@
             transition: box-shadow 0.3s ease;
         }
 
-        /* ── header ── */
+        
         header {
             padding-bottom: 20px;
             margin-bottom: 20px;
@@ -164,7 +164,7 @@
             opacity: 0.7;
         }
 
-        /* ── thread ── */
+        
         #thread {
             flex: 1;
             overflow-y: auto;
@@ -188,7 +188,7 @@
             border-radius: 4px;
         }
 
-        /* ── messages ── */
+        
         .msg {
             max-width: 88%;
             padding: 14px 18px;
@@ -299,7 +299,7 @@
             }
         }
 
-        /* ── citations ── */
+        
         .citations {
             margin-top: 12px;
             padding-top: 10px;
@@ -336,7 +336,7 @@
             font-style: italic;
         }
 
-        /* ── caveat ── */
+        
         .caveat {
             margin-top: 10px;
             font-size: 12.5px;
@@ -348,7 +348,7 @@
             line-height: 1.5;
         }
 
-        /* ── form ── */
+       
         form {
             display: flex;
             gap: 10px;
@@ -431,7 +431,7 @@
             opacity: 0.5;
         }
 
-        /* ── empty state ── */
+        
         .empty-state {
             display: flex;
             flex-direction: column;
@@ -470,7 +470,7 @@
             color: var(--text-muted);
         }
 
-        /* ── responsive ── */
+        
         @media (max-width: 600px) {
             body {
                 padding: 12px 8px;
@@ -547,7 +547,7 @@
         </header>
 
         <div id="thread">
-            <!-- empty state rendered by JS -->
+            
         </div>
 
         <form id="ask-form">
@@ -601,7 +601,7 @@
             return ['found', 'Answer found'];
         }
 
-        // initial empty state
+        
         showEmptyState();
 
         form.addEventListener('submit', async (e) => {
@@ -613,7 +613,7 @@
             input.value = '';
             sendBtn.disabled = true;
 
-            // thinking message
+            
             addMessage('bot', '<span class="status thinking">… thinking</span>');
 
             try {
@@ -624,7 +624,7 @@
                 });
                 const data = await res.json();
 
-                // remove thinking message
+                
                 thread.lastChild.remove();
 
                 const [cls, label] = statusLabel(data);
@@ -658,7 +658,7 @@
             }
         });
 
-        // allow Ctrl+Enter to submit
+        
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                 form.dispatchEvent(new Event('submit'));

@@ -6,6 +6,6 @@ services:
     dockerfilePath: ./Dockerfile
     envVars:
       - key: GROQ_API_KEY
-        sync: false  # set manually in the Render dashboard, never committed
+        sync: false  
     healthCheckPath: /api/health
     autoDeploy: true

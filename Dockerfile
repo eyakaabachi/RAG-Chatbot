@@ -12,5 +12,5 @@ COPY data/ ./data/
 WORKDIR /app/backend
 EXPOSE 7860
 
-# HF Spaces expects the app on port 7860; Render sets $PORT itself.
+
 CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-7860}"]

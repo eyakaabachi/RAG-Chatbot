@@ -1,11 +1,4 @@
-"""
-Unit tests for the pieces of the pipeline that don't require downloading
-the embedding model. Kept model-free on purpose so CI runs in seconds,
-not minutes: retrieval scoring math, chunking, and the typed contract are
-all things we can verify deterministically. The full DocumentIndex
-(which loads sentence-transformers) is exercised manually / in a slower
-integration test, not on every push.
-"""
+
 import sys
 from pathlib import Path
 
@@ -14,12 +7,10 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from rag_pipeline import DocumentIndex, detect_language, parse_and_chunk  # noqa: E402
-from schemas import AnswerContract, Chunk, Citation  # noqa: E402
+from rag_pipeline import DocumentIndex, _fill_missing_value, detect_language, parse_and_chunk  
+from schemas import AnswerContract, Chunk, Citation  
 
-# ---------------------------------------------------------------------------
-# Language detection
-# ---------------------------------------------------------------------------
+
 
 def test_detect_language_french():
     assert detect_language("Quel est le délai de déclaration d'un sinistre ?") == "fr"
@@ -29,9 +20,7 @@ def test_detect_language_english():
     assert detect_language("What is the claim reporting deadline?") == "en"
 
 
-# ---------------------------------------------------------------------------
-# Chunking
-# ---------------------------------------------------------------------------
+
 
 def test_parse_and_chunk_splits_on_headings():
     text = (
@@ -49,7 +38,7 @@ def test_parse_and_chunk_splits_on_headings():
 
 
 def test_parse_and_chunk_wraps_long_sections():
-    long_body = "word " * 500  # far beyond CHUNK_MAX_CHARS
+    long_body = "word " * 500  
     text = f"Article 1\n{long_body}"
     chunks = parse_and_chunk("doc1", text)
     assert len(chunks) > 1
@@ -62,9 +51,7 @@ def test_parse_and_chunk_assigns_language_per_chunk():
     assert chunks[0].language == "fr"
 
 
-# ---------------------------------------------------------------------------
-# Hybrid scoring (keyword + structure), no embedding model needed
-# ---------------------------------------------------------------------------
+
 
 def test_keyword_score_same_language_hit():
     chunk = Chunk(doc_id="d", chunk_id="c1", text="La franchise est de 250 euros.",
@@ -105,9 +92,7 @@ def test_structure_score_zero_without_section():
     assert DocumentIndex._structure_score("any question", chunk) == 0.0
 
 
-# ---------------------------------------------------------------------------
-# Typed contract
-# ---------------------------------------------------------------------------
+
 
 def test_answer_contract_requires_two_booleans():
     contract = AnswerContract(answer_found=True, complete_answer_found=False, confidence=0.6)
@@ -122,4 +107,76 @@ def test_answer_contract_rejects_confidence_out_of_range():
 
 def test_citation_requires_quote():
     with pytest.raises(ValidationError):
-        Citation(doc_id="d", chunk_id="c1")  # missing required `quote`
+        Citation(doc_id="d", chunk_id="c1")  
+
+
+
+
+def test_fill_missing_value_uses_caveat_when_present():
+    answer = AnswerContract(
+        answer_found=True,
+        complete_answer_found=False,
+        value=None,
+        confidence=0.95,
+        caveat="Deadline differs by document: 7 days EN vs 5 days FR.",
+    )
+    result = _fill_missing_value(answer)
+    assert result.value == "Deadline differs by document: 7 days EN vs 5 days FR."
+
+
+def test_fill_missing_value_falls_back_to_citations_note():
+    answer = AnswerContract(
+        answer_found=True,
+        complete_answer_found=True,
+        value=None,
+        confidence=0.8,
+        citations=[Citation(doc_id="d", chunk_id="c1", quote="some verbatim text")],
+    )
+    result = _fill_missing_value(answer)
+    assert result.value  
+
+
+def test_fill_missing_value_leaves_populated_value_untouched():
+    answer = AnswerContract(
+        answer_found=True,
+        complete_answer_found=True,
+        value="The deductible is 250 euros.",
+        confidence=0.9,
+    )
+    result = _fill_missing_value(answer)
+    assert result.value == "The deductible is 250 euros."
+
+
+def test_fill_missing_value_does_not_invent_when_answer_not_found():
+    answer = AnswerContract(
+        answer_found=False,
+        complete_answer_found=False,
+        value=None,
+        confidence=0.0,
+    )
+    result = _fill_missing_value(answer)
+    assert result.value is None
+
+
+
+
+def test_keyword_score_matches_french_theft_query_to_break_in_clause():
+    chunk = Chunk(
+        doc_id="police_assurance_fr", chunk_id="c1",
+        text="La garantie couvre les evenements suivants: incendie, degat des eaux, "
+             "vol avec effraction, et catastrophe naturelle.",
+        section="Article 4", language="fr",
+    )
+    score = DocumentIndex._keyword_score("je me fais voler mon velo, suis-je assure ?", chunk, "fr")
+    assert score > 0.0
+
+
+def test_keyword_score_matches_english_theft_query_to_burglary_clause():
+    chunk = Chunk(
+        doc_id="insurance_policy_en", chunk_id="c1",
+        text="Coverage applies to the following events: fire, water damage, burglary, "
+             "and any natural disaster officially recognized.",
+        section="Section 4", language="en",
+    )
+    score = DocumentIndex._keyword_score("is my stolen bike covered?", chunk, "en")
+    assert score > 0.0
