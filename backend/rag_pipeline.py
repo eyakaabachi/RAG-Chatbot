@@ -11,8 +11,6 @@ import numpy as np
 
 from schemas import AnswerContract, Chunk, RetrievedChunk
 
-
-
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # FR/EN/DE/LU-adjacent
 HF_EMBEDDING_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{EMBEDDING_MODEL_NAME}"
 CHUNK_MAX_CHARS = 700

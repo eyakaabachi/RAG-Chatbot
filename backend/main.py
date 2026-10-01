@@ -15,8 +15,6 @@ from slowapi.util import get_remote_address
 from rag_pipeline import DocumentIndex, generate_answer
 from schemas import AnswerContract
 
-
-
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("doc-chatbot")
 

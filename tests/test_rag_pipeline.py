@@ -7,9 +7,8 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
 
-from rag_pipeline import DocumentIndex, _fill_missing_value, detect_language, parse_and_chunk  
-from schemas import AnswerContract, Chunk, Citation  
-
+from rag_pipeline import DocumentIndex, _fill_missing_value, detect_language, parse_and_chunk
+from schemas import AnswerContract, Chunk, Citation
 
 
 def test_detect_language_french():
