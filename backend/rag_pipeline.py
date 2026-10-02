@@ -11,8 +11,6 @@ import numpy as np
 
 from schemas import AnswerContract, Chunk, RetrievedChunk
 
-
-
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large" 
 CHUNK_MAX_CHARS = 700
 TOP_K = 4
