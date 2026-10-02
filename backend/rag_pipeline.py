@@ -11,11 +11,11 @@ import numpy as np
 
 from schemas import AnswerContract, Chunk, RetrievedChunk
 
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"  # FR/EN/DE/LU-adjacent
-HF_EMBEDDING_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{EMBEDDING_MODEL_NAME}"
+
+
+EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large" 
 CHUNK_MAX_CHARS = 700
 TOP_K = 4
-
 
 KEYWORD_DICTIONARIES = {
     "fr": {
@@ -69,34 +69,34 @@ def detect_language(text: str) -> str:
 
 
 def embed_texts(texts: list[str]) -> np.ndarray:
-    """Call HF's Inference API for sentence embeddings. Returns an
+    """Call HF's Inference Providers for sentence embeddings. Returns an
     (n_texts, dim) array, L2-normalized so a dot product is cosine
     similarity."""
-    import requests
+    from huggingface_hub import InferenceClient
 
     hf_token = os.environ.get("HF_TOKEN")
     if not hf_token:
         raise RuntimeError(
             "HF_TOKEN not set. Get a free token at https://huggingface.co/settings/tokens "
-            "(read scope is enough)."
+            "with the 'Make calls to Inference Providers' permission."
         )
 
-    resp = requests.post(
-        HF_EMBEDDING_URL,
-        headers={"Authorization": f"Bearer {hf_token}"},
-        json={"inputs": texts, "options": {"wait_for_model": True}},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    data = np.array(resp.json(), dtype=np.float32)
+    client = InferenceClient(provider="hf-inference", api_key=hf_token)
 
 
-    if data.ndim == 3:
-        data = data.mean(axis=1)
+    vectors = []
+    for text in texts:
+        result = client.feature_extraction(text, model=EMBEDDING_MODEL_NAME)
+        arr = np.array(result, dtype=np.float32)
+        if arr.ndim == 2:  
+            arr = arr.mean(axis=0)
+        vectors.append(arr)
 
+    data = np.vstack(vectors)
     norms = np.linalg.norm(data, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     return data / norms
+
 
 
 
@@ -138,10 +138,6 @@ def parse_and_chunk(doc_id: str, raw_text: str) -> list[Chunk]:
                 language=detect_language(piece),
             ))
     return chunks
-
-
-
-
 class DocumentIndex:
     def __init__(self):
         self.chunks: list[Chunk] = []
@@ -163,21 +159,21 @@ class DocumentIndex:
         for path in Path(folder).glob("*.txt"):
             self.add_document(path.stem, path.read_text(encoding="utf-8"))
 
-    
+
     def search(self, query: str, top_k: int = TOP_K) -> list[RetrievedChunk]:
         if self.embeddings is None or len(self.chunks) == 0:
             return []
 
         query_lang = detect_language(query)
         query_emb = embed_texts([query])[0]
-        cosine_scores = self.embeddings @ query_emb  
+        cosine_scores = self.embeddings @ query_emb 
 
         results: list[RetrievedChunk] = []
         for chunk, emb_score in zip(self.chunks, cosine_scores, strict=True):
             keyword_score = self._keyword_score(query, chunk, query_lang)
             structure_score = self._structure_score(query, chunk)
 
-            
+
             final = (0.55 * float(emb_score)
                      + 0.20 * structure_score
                      + 0.25 * keyword_score)
@@ -196,7 +192,7 @@ class DocumentIndex:
     @staticmethod
     def _keyword_score(query: str, chunk: Chunk, query_lang: str) -> float:
         chunk_lang = chunk.language or query_lang
-        
+
         dict_query = KEYWORD_DICTIONARIES.get(query_lang, {})
         query_terms = {v for k, v in dict_query.items() if k in query.lower()}
         if not query_terms:
@@ -332,7 +328,11 @@ def call_llm(prompt: str) -> str:
 
 
 def _fill_missing_value(answer: AnswerContract) -> AnswerContract:
-    
+    """Safety net: the prompt tells the model to always populate `value`
+    when answer_found is true, but open models don't follow instructions
+    as reliably as a frontier model. If it slipped through anyway, don't
+    let the UI show a bare "no answer" placeholder when citations and a
+    caveat are actually sitting right there with real information."""
     if answer.answer_found and not answer.value:
         if answer.caveat:
             answer.value = answer.caveat
@@ -353,7 +353,6 @@ def generate_answer(query: str, retrieved: list[RetrievedChunk]) -> AnswerContra
     prompt = build_prompt(query, retrieved)
     raw = call_llm(prompt)
 
-    
     try:
         start, end = raw.index("{"), raw.rindex("}") + 1
         data = json.loads(raw[start:end])
